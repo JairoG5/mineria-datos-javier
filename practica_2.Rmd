@@ -1,0 +1,383 @@
+---
+title: "Práctica II"
+description: |
+  Análisis clúster
+author:
+  - name: Jairo Garcia (DNI Z0020363J)
+    affiliation: Universidad Complutense de Madrid
+    affiliation_url: 
+date: "`r Sys.Date()`"
+output:
+    distill::distill_article:
+        highlight: kate
+        colorlinks: true
+        code_folding: false
+        toc: true            
+        toc_depth: 3     
+---
+
+```{r setup, include = TRUE}
+# Ajuste comunes de los chunk
+knitr::opts_chunk$set(fig.width = 9, fig.asp = 1, out.width = "100%",
+                      message = FALSE, warning = FALSE,
+                      echo = TRUE, res = 400)
+```
+
+# Instrucciones (leer antes de empezar)
+
+-   Modifica dentro del documento `.Rmd` tus datos personales (nombre y DNI) ubicados en la cabecera del archivo.
+
+-   Asegúrate antes de seguir editando el documento que el archivo `.Rmd` compila (Knit) correctamente y se genera el `html` correspondiente.
+
+-   Los chunks creados están o vacíos o incompletos, de ahí que tengan la opción `eval = FALSE`. Una vez que edites lo que consideres debes de cambiar a `eval = TRUE` para que los chunk se ejecuten
+
+## Paquetes necesarios
+
+Necesitaremos los siguientes paquetes:
+
+-   **Manejo de datos**: paquete `{tidyverse}`.
+-   **Modelos**: paquete `{tidymodels}`
+-   **Lectura excel**: paquete `{readxl}`
+-   **Resumen numérico**: paquete `{skimr}`.
+-   **Visualización de clústers y PCA**: paquete `{factoextra}` y `{FactoMineR}`
+-   **Clustering divisivo**: paquete `{cluster}`
+
+```{r paquetes}
+# Borramos variables del environment
+rm(list = ls())
+library(tidyverse)
+library(tidymodels)
+library(readxl)
+library(skimr)
+library(factoextra)
+library(FactoMineR)
+library(cluster)
+library(corrplot)
+library(scales)
+```
+
+# Carga de datos
+
+El archivo de datos a usar será `provincias.xlsx`
+
+```{r}
+provincias <- read_xlsx(path = "./provincias.xlsx")
+```
+
+El fichero contiene **información socioeconómica de las provincias españolas**
+
+```{r}
+glimpse(provincias)
+```
+
+Algunas de las variables son:
+
+-   `Prov`: nombre de la provincia
+-   `Poblacion`: habitantes
+-   `Mortalidad`, `Natalidad`: tasa de mortalidad/natalidad (en tantos por mil)
+-   `IPC`: índice de precios de consumo (sobre un valor base de 100).
+-   `NumEmpresas`: número de empresas.
+-   `PIB`: producto interior bruto
+-   `CTH`: coyuntura turística hotelera (pernoctaciones en establecimientos hoteleros)
+
+# Ejercicio 1:
+
+> Calcula la matriz de covarianzas y de correlaciones. Usa el paquete `{corrplot}` para una representación gráfica de la misma. Detalla y comenta lo que consideres para su correcta interpretación.
+
+```{r eval = TRUE}
+# Completa el código y cambia a eval = TRUE
+
+# Matriz de covarianzas
+cov_mat <- cov(provincias %>% select(where(is.numeric)))
+
+# Matriz de correlaciones
+cor_mat <- cor(provincias %>% select(where(is.numeric)))
+
+
+corrplot(cor_mat, type = "upper",
+          tl.col = "black",  method = "ellipse")
+
+```
+
+> Dándole un vistazo al grafico anterior podemos deducir que hay una gran cantidad de correlación entre las variables, así que es probable que se pueda prescindir de algunas de ellas.
+
+# Ejercicio 2:
+
+> Estandariza los datos por rango y guardalos en provincias_scale
+
+```{r eval = TRUE}
+provincias_scale <- 
+  provincias %>% mutate(across(where(is.numeric), rescale))
+
+```
+
+# Ejercicio 3:
+
+> Calcula con `eigen()` los autovalores y autovectores de la matriz de correlaciones e interpreta dichos resultados en relación a las componentes principales de las variables originales. Detalla todo lo que consideres
+
+```{r eval = TRUE}
+# Completa el código
+autoelementos <- eigen(cov_mat)
+autoelementos
+
+```
+
+# Ejercicio 4:
+
+> Haciendo uso de `PCA()` del paquete `{FactoMineR}` calcula todas las componentes principales. Repite de nuevo el análisis con el mínimo número de componentes necesairas para capturar al menos el 95% de la información de los datos.
+
+```{r eval = TRUE}
+pca_fit <-
+    PCA(provincias %>% select(where(is.numeric)), scale.unit = TRUE , ncp = 18, graph = TRUE)
+pca_full <- provincias_scale %>% select(-Prov)
+
+```
+
+# Ejercicio 5:
+
+> Realiza las gráficas que consideres más útiles para poder interpretar adecuadamente las componentes principales obtenidas. ¿Cuál es la expresión para calcular la primera componente en función de las variables originales?
+
+```{r eval = TRUE}
+
+# Completa el código
+
+# Detalla todo lo que consideres sobre las constribuciones de cada
+# variable a cada componente.
+pca_fit$ind$contrib
+
+fviz_eig(pca_fit,
+         barfill = "#85C1E9",
+         addlabels = TRUE) +
+  theme_minimal() +
+  labs(x = "Componente", 
+       y = "% varianza explicada",
+       title = "Porcentaje de varianza explicada")
+
+
+print(pca_fit$svd$V)
+
+# > Construye un gráfico para visualizar la varianza explicada acumulada
+# > (con una línea horizontal que nos indica el umbral del 95%)
+
+cumvar <- as_tibble(pca_fit$eig)
+names(cumvar) <- c("autovalor", "var", "cumvar")
+
+ggplot(cumvar, aes(x = 1:18, y = cumvar)) +
+  geom_col(fill = "#F0B27A") +
+  geom_hline(yintercept = 90,
+             linetype = "dashed") +
+  theme_minimal() +
+  labs(x = "Componente", 
+       y = "% varianza explicada",
+       title = "% varianza acumulada")
+
+
+
+```
+
+# Ejercicio 6:
+
+> ¿Cuál es la contribución de las variables originales en cada componente principal seleccionada? Proporciona las nuevas coordenadas de los datos. ¿Cuál de las variables es la que está peor explicada?
+
+```{r eval = TRUE}
+#Contribucion de cada variable a las componentes
+pca_fit$var$contrib 
+
+#Nuevas coordenadas de los datos
+pca_fit$ind$coord
+
+fviz_cos2(pca_fit,barfill = "#85C1E9", choice = "var", axes = 1:2)
+```
+> Basado en el Grafico anterior podemos notar que "CANE" es la variable peor explicada
+
+# Ejercicio 7:
+
+> Si tuviéramos que construir un "índice" que valore de forma conjunta el desarrollo económico de una provincia, ¿cómo se podría construir utilizando una combinación lineal de todas las variables? ¿A qué correspondería de lo que hemos visto? ¿Cuál sería el valor de dicho índice en Madrid? ¿Cual sería su valor en Melilla?
+
+```{r eval = TRUE}
+# Completa el código
+A <- c()
+for (i in 1:52) A[i] <- sum(pca_fit$svd$V[,1]*pca_full[i,])
+A <- rescale(A)
+
+provincias_range <- provincias_scale %>%   mutate(indice = A)
+
+provincias_range
+
+```
+
+>¿Cuál sería el valor de dicho índice en Madrid? 
+
+```{r}
+provincias_range$indice[30]
+```
+>¿Cual sería su valor en Melilla?
+
+```{r}
+provincias_range$indice[31]
+```
+
+
+# Ejercicio 8:
+
+> Calcula la matriz de distancias de los datos. Representa un mapa de calor de la matriz de datos, estandarizado y sin estandarizar, así como de la matriz de distancias. Comenta si se detectan inicialmente grupos de provincias.
+
+
+```{r eval = TRUE}
+#Matriz de distancias. en "Method" le indico el tipo de metrica, el codigo 
+
+
+dse <- dist(provincias %>%
+            mutate(across(where(is.numeric))),
+          method = "euclidean")
+
+d <- dist(provincias_scale %>% select(-Prov),
+          method = "euclidean") 
+
+
+#Matriz sin Estandarizar
+fviz_dist(dse, show_labels = TRUE) +
+  labs(title = "Matriz de distancias (sin estandarizadar)")
+
+
+#Matriz Estandarizada
+fviz_dist(d, show_labels = TRUE)  +
+  labs(title = "Matriz de distancias (estandarizada)") 
+
+```
+
+> En la Grafica de la matriz estandarizada podemos apreciar entre 3 y cuatro grupos.
+
+# Ejercicio 9:
+
+> Realiza varios análisis de clúster jerárquico con distintos enlaces y comenta las diferencias. En cada caso visualiza el dendograma y comenta cuántos clusters recomendarías usar.
+
+>Jairo: Los comentarios los hare dentro del codigo
+
+```{r eval = TRUE}
+
+# Completa el código
+# Dendograma (simple)
+# Ya que en este se pueden notar mmayoria en ciertos grupos, es mejor optar solo por 3
+single_clust <- hclust(d, method = "single")
+fviz_dend(single_clust, 
+          k = 3, 
+          cex = 0.5,
+          k_colors = 
+            c("#E74C3C", "#5499C7",
+              "#8E44AD"),
+          color_labels_by_k = TRUE, 
+          rect = TRUE) +
+  labs(title = "Dendograma (simple)")
+
+#Dendograma (complete) | Clustering (complete
+
+complete_clust <- hclust(d, method = "complete")
+
+#para los este 6 ya que hay mas grupos
+fviz_dend(complete_clust, k = 6,
+          cex = 0.5, 
+          k_colors =
+            c("#E74C3C", "#5499C7", "#8E44AD", "#273746", "#28B463", "#E7B800"),
+          # Diferentes colores a los clusters
+          color_labels_by_k = TRUE, 
+          #añade un rectángulo alrededor
+          rect = TRUE) +
+  labs(title = "Dendograma (complete)")
+
+#Para poder apreciar mejor, en este caso 20 sera un numero adecuado.
+
+#Dendograma (average)
+average_clust <-
+  hclust(d, method = "average")
+
+
+fviz_dend(average_clust, k = 20,
+          cex = 0.5, 
+          k_colors =
+            c("#2E9FDF", "#00AFBB", "#E7B800","#E74C3C", "#5499C7", "#8E44AD", "#273746", "#28B463"),
+          # Diferentes colores a los clusters
+          color_labels_by_k = TRUE, 
+          #añade un rectángulo alrededor
+          rect = TRUE) +
+  labs(title = "Dendograma (average)") 
+```
+
+# Ejercicio 10:
+
+> ¿Qué número óptimo de clusters nos indican los criterios Silhoutte y de Elbow? Representar los individuos agrupados según el número de clusters elegido. 
+
+>Una vez ejecutado el codigo, se puede notar en los graficos que el numero de clusters optimo es 3, notese que la variablididad decrementa despues de este.
+
+```{r eval = TRUE}
+kclust <- kmeans(provincias_scale %>% select(-Prov),
+                 centers = 3, iter.max = 50)
+
+fviz_nbclust(provincias_scale %>% select(-Prov), kmeans,
+             method = "silhouette", k.max = 17) +
+  theme_minimal() +
+  labs(x = "nº clústeres (k)",
+       y = "Variabilidad total intra-clústeres (W)",
+       title = "Número óptimo basado en silhouette")
+
+fviz_nbclust(provincias_scale %>% select(-Prov),
+             kmeans, method = "wss", k.max = 17) +
+  geom_vline(xintercept = 3, linetype = 2) +
+  theme_minimal() +
+  labs(x = "nº clústeres (k)",
+       y = "Variabilidad total intra-clústeres (W)",
+       title = "Número óptimo basado en variabilidad total intra-clústeres")
+
+
+silho <- silhouette(kclust$cluster, d)
+silho
+
+
+# Clustering (ward)
+ward_clust <-
+  hclust(d, method = "ward.D2")
+groups <- cutree(ward_clust, k = 3)
+sil <- silhouette(groups, d)
+#row.names(sil) <- row.names(esperanza_scale_df)
+# Visualización
+fviz_silhouette(sil, label = TRUE,
+                print.summary = FALSE) +
+  scale_fill_manual(values =
+                      c("#E74C3C", "#28B463",
+                        "#E7B800")) +
+  scale_color_manual(values =
+                      c("#E74C3C", "#28B463",
+                        "#E7B800")) +
+  theme_minimal() +
+  labs(title =
+         "Índice silhouette para jerárquico Ward con k = 3") +
+  # Giramos etiquetas eje
+  theme(axis.text.x =
+          element_text(angle = 90,
+                       vjust = 0.5,
+                       hjust = 1))
+
+```
+
+# Ejercicio 11:
+
+> Con el número de clusters decidido en el apartado anterior realizar un agrupamiento no jerárquico de k-medias. Representar los clusters formados en los planos de las Componentes principales. Interpreta los resultados y evalúa la calidad del análisis clúster. Explica las provincias que forman cada uno de los clusters y comentar cuales son las características socioeconómicas que las hacen pertenecer a dicho cluster
+
+```{r eval = TRUE}
+
+kclust <- kmeans(provincias_scale %>% select(-Prov),
+                 centers = 3, iter.max = 54)
+
+fviz_cluster(list(data =
+                    provincias_scale %>% select(-Prov),
+                  cluster = kclust$cluster),
+             ellipse.type = "convex", 
+             repel = TRUE,
+             show.clust.cent = FALSE) +
+  labs(title = "Cluster (k-means)") +
+  theme_minimal()
+
+
+```
+
+>De el lado derecho podemos encontrar a madrid y barcelona ciudades con mayor desarrollo donde la economia y el acceso a los estudios superiores es mayor, caso contrario de las provincias que encontramos el cluster azul.
